@@ -1,12 +1,12 @@
 /**
  * Fill in the following variables
  */
-var CLIENT_ID = '8c82d00e-e03f-4bab-86b3-68d37092497a';
-var CLIENT_SECRET = '4ef2439f-e0a0-4d17-80af-935cc9644e9e';
+var CLIENT_ID = 'enter this in from Hubspot Developer Account';
+var CLIENT_SECRET = 'enter this in from Hubspot Developer Account';
 var SCOPE = 'contacts';
-var AUTH_URL = "https://app.hubspot.com/oauth/authorize";
-var TOKEN_URL = "https://api.hubapi.com/oauth/v1/token";
-var API_URL = "https://api.hubapi.com";
+var AUTH_URL = "https://app.hubspot.com/oauth/authorize"; //should be the same for all hubspot instances
+var TOKEN_URL = "https://api.hubapi.com/oauth/v1/token"; //should be the same for all hubspot instances
+var API_URL = "https://api.hubapi.com"; //should be the same for all hubspot instances
 
 /**
  * Create the following sheets in your spreadsheet
@@ -115,10 +115,10 @@ function getStages() {
   Logger.log(headers);
   
   // API request
-  var pipeline_id = '052ea0be-8baf-47a9-8ad3-ec1cbecf72f4'; // pipeline id
-  var url = API_URL + "/crm-pipelines/v1/pipelines/deals";
-  var response = UrlFetchApp.fetch(url, headers);
-  var result = JSON.parse(response.getContentText());
+  var pipeline_id = 'default'; // enter pipeline id
+  var url = API_URL + "/crm-pipelines/v1/pipelines/deals"; //Hubspots V1 pipeline deals endpoint
+  var response = UrlFetchApp.fetch(url, headers); //raw JSON object
+  var result = JSON.parse(response.getContentText()); // Parse the JSON object to make it ready to process
   var stages = Array();
   
   // Looping through the different pipelines in Hubspot
@@ -182,8 +182,8 @@ function getDeals() {
       var createdate = (deal.properties.hasOwnProperty("createdate")) ? deal.properties.createdate.value : "unknown";
       var closedate = (deal.properties.hasOwnProperty("closedate")) ? deal.properties.closedate.value : "unknown";
       var associatedCompanyId = deal.associations.associatedCompanyIds[0];
-      var expansionRenewal = deal.properties.hasOwnProperty("expansion_or_renewal") ? deal.properties.expansion_or_renewal.value : "unknown";
-      var contractEndDate = deal.properties.hasOwnProperty("contract_end_date") ? deal.properties.contract_end_date.value : "unknown";
+      var expansionRenewal = deal.properties.hasOwnProperty("expansion_or_renewal") ? deal.properties.expansion_or_renewal.value : "unknown"; //these are custome properties so either create them or delete these variables 
+      var contractEndDate = deal.properties.hasOwnProperty("contract_end_date") ? deal.properties.contract_end_date.value : "unknown";  //these are custome properties so either create them or delete these variables
       
          
       deals.push([stageId,source,amount,name,createdate,closedate,associatedCompanyId,expansionRenewal,contractEndDate]);
@@ -246,64 +246,6 @@ function getCustomers() {
   Logger.log(customers);
   return customers;
 }
-
-
-/**
- * Usese CRM API to get Deal associations, this uses V3 of the Hubspot API which has improved cross object capabilities
- * API & Documentation URL: https://developers.hubspot.com/docs/api/crm/deals
- 
-function getAssociations() {
-  // Prepare authentication to Hubspot
-  var service = getService();
-  var headers = {headers: {'Authorization': 'Bearer ' + service.getAccessToken()}};
-  
-  // Prepare pagination
-  // Hubspot lets you take max 100 associations per request
-  // make multiple request until we get all the associationed company IDs
-  var keep_going = true;
-  var offset = 0;
-  var associations = Array();
-
-while(keep_going)
-  {
-    // Takes properties from the deals crm/v3/objects/deals?&properties=dealname&associations=companies&archived=false
-    var url = API_URL + "/crm/v3/objects/companies?limit=100&properties=lifecyclestage%2Cname&archived=false&offset="+offset;
-    var response = UrlFetchApp.fetch(url, headers);
-    var response = UrlFetchApp.fetch(url, headers);
-    var result = JSON.parse(response.getContentText());
-    
-    // Are there any more results, should we stop the pagination ?
-    keep_going = result.hasMore;
-    offset = result.offset;
-    //Logger.log(keep_going)
-    
-
-    };
-  //Loop to iterarte through the Result Object which is a combination of objects and arrays
-  //Use JSON Parser to see structure of object if needed
-  
-  for(let i=0; i<100; i++){
-    if(result.results[i].hasOwnProperty("associations") == true){
-    var associatedDeal = result.results[i].properties.dealname;
-    var companyID =result.results[i].associations.companies.results[0].id;
-    associations.push([companyID,associatedDeal]);
-    } else {
-        Logger.log("Poop");
-      //companyID="Uknown";
-      //associations.push([companyID,associatedDeal]);
-      };
-  
-
-    
-  }
-    Logger.log(associations);
-    return associations;
-}
-
-*/
-
-
-
 
 
 /**
@@ -409,64 +351,3 @@ function refreshCustomers() {
         authorizationUrl);
   }
 }
-
-
-  
-/**
-The following two functions are for Later Use when Inbound is generated 
-
- * Logs amount of leads per stage over time
- * and print it into the sheet "Log: Stages"
- * It should be called once a day with a Project Trigger
-
-function logStages() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("Stages: Count");
-  var getRange = sheet.getRange("B2:B12");
-  var row = getRange.getValues();
-  row.unshift(new Date);
-  var matrix = [row];
-  
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("Log: Stages");
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-    
-    // Writing at the end of the spreadsheet
-  var setRange = sheet.getRange(lastRow+1,1,1,row.length);
-  setRange.setValues(matrix);
-}
-
-
- * This function will log the amount of leads per source over time
- * and print it into the sheet "Log: Sources"
- * Called once a day at Midnight
- 
-function logSources() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("Sources: Count & Conversion Rates");
-  var getRange = sheet.getRange("M3:M13");
-  var row = getRange.getValues();
-  row.unshift(new Date);
-  var matrix = [row];
-  
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("Log: Sources");
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-    
-    // Writing at the end of the spreadsheet
-  var setRange = sheet.getRange(lastRow+1,1,1,row.length);
-  setRange.setValues(matrix);
-  
-}
-**/
-
-/**
-* ###########################################################################
-* # ----------------------------------------------------------------------- #
-* # -------------------------------- AbhiApp ------------------------------ #
-* # ----------------------------------------------------------------------- #
-* ###########################################################################
-*/
-
