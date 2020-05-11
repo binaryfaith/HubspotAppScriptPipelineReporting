@@ -1,0 +1,472 @@
+/**
+ * Fill in the following variables
+ */
+var CLIENT_ID = '8c82d00e-e03f-4bab-86b3-68d37092497a';
+var CLIENT_SECRET = '4ef2439f-e0a0-4d17-80af-935cc9644e9e';
+var SCOPE = 'contacts';
+var AUTH_URL = "https://app.hubspot.com/oauth/authorize";
+var TOKEN_URL = "https://api.hubapi.com/oauth/v1/token";
+var API_URL = "https://api.hubapi.com";
+
+/**
+ * Create the following sheets in your spreadsheet
+ * "Stages"
+ * "Deals"
+ */
+var sheetNameStages = "Stages";
+var sheetNameDeals = "Deals";
+var sheetNameCustomerPipline = "CustomerPipeline";
+var sheetNameCustomers = "Customers";
+var sheetNameNotes = "Notes";
+var sheetNameLogSources = "Log: Sources";
+var sheetNameLogStages = "Log: Stages";
+
+
+
+/**
+ * ###########################################################################
+ * # ----------------------------------------------------------------------- #
+ * # --------------------------- AUTHENTICATION ---------------------------- #
+ * # ----------------------------------------------------------------------- #
+ * ###########################################################################
+ */
+
+/**
+ * Authorizes and makes a request to get the deals from Hubspot.
+ */
+function  getOAuth2Access() {
+  var service = getService();
+  if (service.hasAccess()) {
+    Logger.log('it already had access');
+  } else {
+    var authorizationUrl = service.getAuthorizationUrl();
+    Logger.log('Open the following URL and re-run the script: %s',
+        authorizationUrl);
+  }
+}
+
+/**
+ * Reset the authorization state, so that it can be re-tested.
+ */
+function reset() {
+  getService().reset();
+}
+
+/**
+ * Configures the service.
+ */
+function getService() {
+  return OAuth2.createService('hubspot')
+      // Set the endpoint URLs.
+      .setTokenUrl(TOKEN_URL)
+      .setAuthorizationBaseUrl(AUTH_URL)
+
+      // Set the client ID and secret.
+      .setClientId(CLIENT_ID)
+      .setClientSecret(CLIENT_SECRET)
+
+      // Set the name of the callback function in the script referenced
+      // above that should be invoked to complete the OAuth flow.
+      .setCallbackFunction('authCallback')
+
+      // Set the property store where authorized tokens should be persisted.
+      .setPropertyStore(PropertiesService.getUserProperties())
+      .setScope(SCOPE);
+}
+
+/**
+ * Handles the OAuth2 callback.
+ */
+function authCallback(request) {
+  var service = getService();
+  var authorized = service.handleCallback(request);
+  if (authorized) {
+    return HtmlService.createHtmlOutput('Success!');
+  } else {
+    return HtmlService.createHtmlOutput('Denied.');
+  }
+}
+
+/**
+ * Logs the redict URI to register.
+ */
+function logRedirectUri() {
+  Logger.log(getService().getRedirectUri());
+}
+
+
+
+/**
+ * ###########################################################################
+ * # ----------------------------------------------------------------------- #
+ * # ------------------------------- GET DATA ------------------------------ #
+ * # ----------------------------------------------------------------------- #
+ * ###########################################################################
+ */
+
+/**
+ * Get the different stages in your Hubspot pipeline
+ * API & Documentation URL: https://developers.hubspot.com/docs/methods/deal-pipelines/get-deal-pipeline
+ */
+function getStages() {
+  // Prepare authentication to Hubspot
+  var service = getService();
+  var headers = {headers: {'Authorization': 'Bearer ' + service.getAccessToken()}};
+  Logger.log(headers);
+  
+  // API request
+  var pipeline_id = '052ea0be-8baf-47a9-8ad3-ec1cbecf72f4'; // pipeline id
+  var url = API_URL + "/crm-pipelines/v1/pipelines/deals";
+  var response = UrlFetchApp.fetch(url, headers);
+  var result = JSON.parse(response.getContentText());
+  var stages = Array();
+  
+  // Looping through the different pipelines in Hubspot
+  result.results.forEach(function(item) {
+    if (item.pipelineId == pipeline_id) {
+      var result_stages = item.stages;
+      // Let's sort the stages by displayOrder
+      result_stages.sort(function(a,b) {
+        return a.displayOrder-b.displayOrder;
+      });
+  
+      // Let's put all the used stages (id & label) in an array
+      result_stages.forEach(function(stage) {
+        stages.push([stage.stageId,stage.label]);  
+      });
+    }
+  });
+  
+  return stages;
+}
+
+/**
+ * Get the deals from your Hubspot pipeline
+ * API & Documentation URL: https://developers.hubspot.com/docs/methods/deals/get-all-deals
+ */
+function getDeals() {
+  // Prepare authentication to Hubspot
+  var service = getService();
+  var headers = {headers: {'Authorization': 'Bearer ' + service.getAccessToken()}};
+  
+  // Prepare pagination
+  // Hubspot lets you take max 250 deals per request. 
+  // make multiple request until we get all the deals.
+  var keep_going = true;
+  var offset = 0;
+  var deals = Array();
+  
+
+  while(keep_going)
+  {
+    // Takes properties from the deals
+    var url = API_URL + "/deals/v1/deal/paged?properties=dealstage&properties=deal_contact_source_type&properties=dealname&properties=amount&properties=createdate&properties=expansion_or_renewal&properties=contract_end_date&properties=closedate&includeAssociations=true&limit=250&offset="+offset;
+    var response = UrlFetchApp.fetch(url, headers);
+    var result = JSON.parse(response.getContentText());
+   
+    
+    // Are there any more results, should we stop the pagination ?
+    keep_going = result["has-more"];
+    offset = result.offset;
+    
+    // For each deal, we take the stageId, source & amount
+ 
+    result.deals.forEach(function(deal) {
+      //Logger.log(deal.expansion_or_renewal);
+ 
+     // Logger.log('poooooooooooooooooooooooooooooooop');
+      var stageId = (deal.properties.hasOwnProperty("dealstage")) ? deal.properties.dealstage.value : "unknown";
+      var source = (deal.properties.hasOwnProperty("deal_contact_source_type")) ? deal.properties.deal_contact_source_type.value : "unknown";
+      var amount = (deal.properties.hasOwnProperty("amount")) ? deal.properties.amount.value : 0;
+      var name = (deal.properties.hasOwnProperty("dealname")) ? deal.properties.dealname.value : "unknown";
+      var createdate = (deal.properties.hasOwnProperty("createdate")) ? deal.properties.createdate.value : "unknown";
+      var closedate = (deal.properties.hasOwnProperty("closedate")) ? deal.properties.closedate.value : "unknown";
+      var associatedCompanyId = deal.associations.associatedCompanyIds[0];
+      var expansionRenewal = deal.properties.hasOwnProperty("expansion_or_renewal") ? deal.properties.expansion_or_renewal.value : "unknown";
+      var contractEndDate = deal.properties.hasOwnProperty("contract_end_date") ? deal.properties.contract_end_date.value : "unknown";
+      
+         
+      deals.push([stageId,source,amount,name,createdate,closedate,associatedCompanyId,expansionRenewal,contractEndDate]);
+      
+    });
+  };
+  
+  return deals;
+}
+
+/**
+ * Get Customers from companies api which is V2
+ * API & Documentation URL: https://developers.hubspot.com/docs/methods/companies/get-all-companies
+ */
+
+function getCustomers() {
+  // Prepare authentication to Hubspot
+  var service = getService();
+  var headers = {headers: {'Authorization': 'Bearer ' + service.getAccessToken()}};
+  
+  // Prepare pagination
+  // Hubspot lets you take max 250 companies per request. 
+  // make multiple request until we get all the deals.
+  var keep_going = true;
+  var offset = 0;
+  var customers = Array();
+
+  while(keep_going)
+  {
+    // Takes properties from the companies
+    var url = API_URL + "/companies/v2/companies/paged?&properties=lifecyclestage&properties=name&limit=250&offset="+offset;
+    var response = UrlFetchApp.fetch(url, headers);
+    var result = JSON.parse(response.getContentText());
+    
+    // Are there any more results, should we stop the pagination ?
+    keep_going = result["has-more"];
+    offset = result.offset;
+    
+      // For each deal, we take the stageId, source & amount
+    result.companies.forEach(function(company) {
+      
+      if(company.properties.hasOwnProperty("lifecyclestage") === true){
+      
+        if(company.properties.lifecyclestage.value === "customer"){
+        
+          var customerName = company.properties.name.value;
+          var customerID = company.companyId;
+         
+          customers.push([customerID,customerName]);
+          
+        }
+        
+      }
+          
+    });
+    
+  }
+  
+
+  Logger.log(customers);
+  return customers;
+}
+
+
+/**
+ * Usese CRM API to get Deal associations, this uses V3 of the Hubspot API which has improved cross object capabilities
+ * API & Documentation URL: https://developers.hubspot.com/docs/api/crm/deals
+ 
+function getAssociations() {
+  // Prepare authentication to Hubspot
+  var service = getService();
+  var headers = {headers: {'Authorization': 'Bearer ' + service.getAccessToken()}};
+  
+  // Prepare pagination
+  // Hubspot lets you take max 100 associations per request
+  // make multiple request until we get all the associationed company IDs
+  var keep_going = true;
+  var offset = 0;
+  var associations = Array();
+
+while(keep_going)
+  {
+    // Takes properties from the deals crm/v3/objects/deals?&properties=dealname&associations=companies&archived=false
+    var url = API_URL + "/crm/v3/objects/companies?limit=100&properties=lifecyclestage%2Cname&archived=false&offset="+offset;
+    var response = UrlFetchApp.fetch(url, headers);
+    var response = UrlFetchApp.fetch(url, headers);
+    var result = JSON.parse(response.getContentText());
+    
+    // Are there any more results, should we stop the pagination ?
+    keep_going = result.hasMore;
+    offset = result.offset;
+    //Logger.log(keep_going)
+    
+
+    };
+  //Loop to iterarte through the Result Object which is a combination of objects and arrays
+  //Use JSON Parser to see structure of object if needed
+  
+  for(let i=0; i<100; i++){
+    if(result.results[i].hasOwnProperty("associations") == true){
+    var associatedDeal = result.results[i].properties.dealname;
+    var companyID =result.results[i].associations.companies.results[0].id;
+    associations.push([companyID,associatedDeal]);
+    } else {
+        Logger.log("Poop");
+      //companyID="Uknown";
+      //associations.push([companyID,associatedDeal]);
+      };
+  
+
+    
+  }
+    Logger.log(associations);
+    return associations;
+}
+
+*/
+
+
+
+
+
+/**
+* ###########################################################################
+* # ----------------------------------------------------------------------- #
+* # -------------------------- WRITE TO SPREADSHEET ----------------------- #
+* # ----------------------------------------------------------------------- #
+* ###########################################################################
+*/
+
+/**
+ * Print the different stages in your pipeline to the spreadsheet
+ */
+function writeStages(stages) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetNameStages);
+  
+  // Let's put some headers and add the stages to our table
+  var matrix = Array(["StageID","StageName"]);
+  matrix = matrix.concat(stages);
+  
+  // Writing the table to the spreadsheet
+  var range = sheet.getRange(1,1,matrix.length,matrix[0].length);
+  range.setValues(matrix);
+}
+
+/**
+ * Print the different deals that are in your pipeline to the spreadsheet
+ */
+function writeDeals(deals) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetNameDeals);
+  
+  // Let's put some headers and add the deals to our table
+  var matrix = Array(["StageID","Source", "Amount", "Name","Createdate","Closedate","associatedCompanyId","expansionRenewal","contractEndDate"]);
+  matrix = matrix.concat(deals);
+  
+  // Writing the table to the spreadsheet
+  var range = sheet.getRange(1,1,matrix.length,matrix[0].length);
+  range.setValues(matrix);
+}
+
+/**
+ * Print customers to the spreadsheet
+ */
+function writeCustomers(customers) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetNameCustomers);
+  
+  // Let's put some headers and add the deals to our table
+  var matrix = Array(["IDs","Customers"]);
+  matrix = matrix.concat(customers);
+  
+  // Writing the table to the spreadsheet
+  var range = sheet.getRange(1,1,matrix.length,matrix[0].length);
+  range.setValues(matrix);
+}
+
+
+
+/**
+* ###########################################################################
+* # ----------------------------------------------------------------------- #
+* # -------------------------------- ROUTINE ------------------------------ #
+* # ----------------------------------------------------------------------- #
+* ###########################################################################
+*/
+
+/**
+ * This function will update the spreadsheet and is called at Midnight everyday. 
+ */
+function refresh() {
+  var service = getService();
+  
+  if (service.hasAccess()) {
+    var stages = getStages();
+    writeStages(stages);
+  
+    var deals = getDeals();
+    writeDeals(deals);
+    
+     var customers = getCustomers();
+    writeCustomers(customers);
+    
+  } else {
+    var authorizationUrl = service.getAuthorizationUrl();
+    Logger.log('Open the following URL and re-run the script: %s',
+        authorizationUrl);
+  }
+};
+
+function refreshCustomers() {
+  var service = getService();
+  
+  if (service.hasAccess()) {
+    
+     var customers = getCustomers();
+    writeCustomers(customers);
+    
+  } else {
+    var authorizationUrl = service.getAuthorizationUrl();
+    Logger.log('Open the following URL and re-run the script: %s',
+        authorizationUrl);
+  }
+}
+
+
+  
+/**
+The following two functions are for Later Use when Inbound is generated 
+
+ * Logs amount of leads per stage over time
+ * and print it into the sheet "Log: Stages"
+ * It should be called once a day with a Project Trigger
+
+function logStages() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Stages: Count");
+  var getRange = sheet.getRange("B2:B12");
+  var row = getRange.getValues();
+  row.unshift(new Date);
+  var matrix = [row];
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Log: Stages");
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+    
+    // Writing at the end of the spreadsheet
+  var setRange = sheet.getRange(lastRow+1,1,1,row.length);
+  setRange.setValues(matrix);
+}
+
+
+ * This function will log the amount of leads per source over time
+ * and print it into the sheet "Log: Sources"
+ * Called once a day at Midnight
+ 
+function logSources() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Sources: Count & Conversion Rates");
+  var getRange = sheet.getRange("M3:M13");
+  var row = getRange.getValues();
+  row.unshift(new Date);
+  var matrix = [row];
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Log: Sources");
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+    
+    // Writing at the end of the spreadsheet
+  var setRange = sheet.getRange(lastRow+1,1,1,row.length);
+  setRange.setValues(matrix);
+  
+}
+**/
+
+/**
+* ###########################################################################
+* # ----------------------------------------------------------------------- #
+* # -------------------------------- AbhiApp ------------------------------ #
+* # ----------------------------------------------------------------------- #
+* ###########################################################################
+*/
+
