@@ -15,11 +15,9 @@ var API_URL = "https://api.hubapi.com"; //should be the same for all hubspot ins
  */
 var sheetNameStages = "Stages";
 var sheetNameDeals = "Deals";
-var sheetNameCustomerPipline = "CustomerPipeline";
 var sheetNameCustomers = "Customers";
 var sheetNameNotes = "Notes";
-var sheetNameLogSources = "Log: Sources";
-var sheetNameLogStages = "Log: Stages";
+
 
 
 
